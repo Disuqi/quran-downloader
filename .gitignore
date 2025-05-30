@@ -4,3 +4,4 @@ build
 include
 lib
 share
+.DS_Store
