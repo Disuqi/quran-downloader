@@ -1,4 +1,5 @@
 from colorama import init, Fore, Style
+
 init(autoreset=True)
 
 def print_title(title: str) -> None:
