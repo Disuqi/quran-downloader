@@ -3,6 +3,7 @@ import os
 import asyncio
 import platform
 import aiohttp
+import ssl
 from loading_bar import LoadingBar
 from quran_audio_api import QuranAudioAPI
 from prompt_toolkit import prompt
@@ -11,9 +12,6 @@ from prompt_toolkit import PromptSession
 from colored_print import print_debug, print_success, print_error, print_warning, print_info, print_subtitle, print_title
 from mutagen.mp3 import MP3
 from mutagen.id3 import ID3, TIT2, TPE1, TALB, TDRC, TCON, TRCK
-
-# main.py
-session = PromptSession()
 
 suras_name_to_number = {
     "1": "Al-Fatiha",
@@ -133,9 +131,19 @@ suras_name_to_number = {
   }
 suras_number_to_name = dict(map(reversed, suras_name_to_number.items()))
 
+session = PromptSession()
+
+
 system = platform.system()
 if system == 'Windows':
     download_location = os.path.expanduser('~\\Downloads')
+    import locale
+    import codecs
+    
+    # Set UTF-8 encoding for Windows console
+    if hasattr(sys.stdout, 'reconfigure'):
+        sys.stdout.reconfigure(encoding='utf-8')
+        sys.stderr.reconfigure(encoding='utf-8')
 else:
     download_location = os.path.expanduser('~/Downloads')
 
@@ -264,8 +272,8 @@ async def download_surah(surah, reciter_id, onSuccess=None, onFail=None, max_ret
                 use_dns_cache=True
             )
 
-            async with aiohttp.ClientSession(timeout=timeout, connector=connector) as session:
-                async with session.get(audio_link) as response:
+            async with aiohttp.ClientSession(timeout=timeout, connector=connector) as httpSession:
+                async with httpSession.get(audio_link) as response:
                     if response.status == 200:
                         await write_surah_to_file(filepath, response)
                         set_metadata(filepath, surah, surah_name, reciter_name)
@@ -345,12 +353,15 @@ def show_menu():
     print_info("6 - Exit")
 
 async def main():
+    if platform.system() == 'Windows':
+        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
     await QuranAudioAPI.initialize()
     os.makedirs(download_location, exist_ok=True)
     print_title("-- Quran Audio Downloader --")
     while True:
         show_menu()
-        choice = await session.prompt_async("\nChoose an option (1-6): ")
+        choice = await session.prompt_async("\nChoose an option (1-6): ", completer=None)
 
         if choice == '1':
             await download_one_surah()
