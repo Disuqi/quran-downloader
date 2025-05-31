@@ -84,16 +84,6 @@ If you encounter any issues or have questions:
 2. Create a new issue with detailed information
 3. Include error messages and system information
 
-## Changelog
-
-### v1.0.0
-- Initial release
-- Basic download functionality
-- Interactive menu system
-- Progress tracking
-- Metadata tagging
-- Error handling and retry mechanism
-
 ---
 
 **May Allah accept this work and make it beneficial for the Muslim community.**
