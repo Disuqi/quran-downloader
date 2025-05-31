@@ -19,6 +19,8 @@ a = Analysis(
         'colorama',
         'asyncio',
         'ssl',
+        'locale',
+        'codecs'
     ],
     hookspath=[],
     hooksconfig={},

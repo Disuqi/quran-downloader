@@ -13,7 +13,7 @@ from colored_print import print_debug, print_success, print_error, print_warning
 from mutagen.mp3 import MP3
 from mutagen.id3 import ID3, TIT2, TPE1, TALB, TDRC, TCON, TRCK
 
-suras_name_to_number = {
+suras_number_to_name = {
     "1": "Al-Fatiha",
     "2": "Al-Baqarah",
     "3": "Al-Imran",
@@ -129,10 +129,9 @@ suras_name_to_number = {
     "113": "Al-Falaq",
     "114": "An-Nas"
   }
-suras_number_to_name = dict(map(reversed, suras_name_to_number.items()))
+suras_name_to_number = {v: k for k, v in suras_number_to_name.items()}
 
 session = PromptSession()
-
 
 system = platform.system()
 if system == 'Windows':
