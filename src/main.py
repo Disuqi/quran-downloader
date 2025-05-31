@@ -6,10 +6,17 @@ import aiohttp
 import ssl
 from loading_bar import LoadingBar
 from quran_audio_api import QuranAudioAPI
-from prompt_toolkit import prompt
-from prompt_toolkit.completion import WordCompleter, PathCompleter
+from prompt_toolkit.completion import WordCompleter, PathCompleter, FuzzyCompleter
 from prompt_toolkit import PromptSession
-from colored_print import print_debug, print_success, print_error, print_warning, print_info, print_subtitle, print_title
+from colored_print import (
+    print_debug,
+    print_success,
+    print_error,
+    print_warning,
+    print_info,
+    print_subtitle,
+    print_title,
+)
 from mutagen.mp3 import MP3
 from mutagen.id3 import ID3, TIT2, TPE1, TALB, TDRC, TCON, TRCK
 
@@ -127,35 +134,36 @@ suras_number_to_name = {
     "111": "Al-Masad",
     "112": "Al-Ikhlas",
     "113": "Al-Falaq",
-    "114": "An-Nas"
-  }
+    "114": "An-Nas",
+}
 suras_name_to_number = {v: k for k, v in suras_number_to_name.items()}
 
-session = PromptSession()
-
 system = platform.system()
-if system == 'Windows':
-    download_location = os.path.expanduser('~\\Downloads')
+if system == "Windows":
+    download_location = os.path.expanduser("~\\Downloads")
     import locale
     import codecs
-    
-    # Set UTF-8 encoding for Windows console
-    if hasattr(sys.stdout, 'reconfigure'):
-        sys.stdout.reconfigure(encoding='utf-8')
-        sys.stderr.reconfigure(encoding='utf-8')
+
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
+        sys.stderr.reconfigure(encoding="utf-8")
 else:
-    download_location = os.path.expanduser('~/Downloads')
+    download_location = os.path.expanduser("~/Downloads")
+
 
 async def ask_for_surah():
     suras_list = [item for pair in suras_name_to_number.items() for item in pair]
- 
-    surah_completed = WordCompleter(suras_list, ignore_case=True)
-    surah = await session.prompt_async("Enter the surah name of number: ", completer=surah_completed)
+    # FuzzyCompleter allows partial matching and handles spaces better
+    base_completer = WordCompleter(suras_list, ignore_case=True)
+    surah_completed = FuzzyCompleter(base_completer)
+
+    session = PromptSession(completer=surah_completed)
+    surah = await session.prompt_async("Enter the surah name of number: ")
     surah = surah.strip()
 
     if surah is None or not surah:
         return None
-    
+
     if suras_name_to_number.get(surah):
         surah = suras_name_to_number[surah]
     elif surah.isdigit() and surah in suras_number_to_name:
@@ -165,15 +173,19 @@ async def ask_for_surah():
 
     return surah
 
+
 async def ask_for_reciter():
     reciters = QuranAudioAPI.list_reciters()
-    reciter_names = [reciter['name'] for reciter in reciters]
-    reciter_completer = WordCompleter(reciter_names, ignore_case=True)
+    reciter_names = [reciter["name"] for reciter in reciters]
+    base_completer = WordCompleter(reciter_names, ignore_case=True)
+    reciter_completer = FuzzyCompleter(base_completer)
 
-    reciter = await session.prompt_async("Enter the reciter name: ", completer=reciter_completer)
+    session = PromptSession(completer=reciter_completer)
+    reciter = await session.prompt_async("Enter the reciter name: ")
     reciter = QuranAudioAPI.get_reciter_id_by_name(reciter)
 
     return reciter
+
 
 async def download_one_surah():
     surah = await ask_for_surah()
@@ -188,17 +200,21 @@ async def download_one_surah():
 
     await download_surah(surah, reciter)
 
+
 async def download_all_surahs():
     reciter = await ask_for_reciter()
     if not reciter:
         print_error("Given Reciter name does not exist. Please try again.")
         return
-    
+
     surahs = list(suras_number_to_name.keys())
     failed_surahs = await download_surahs(surahs, reciter)
+    session = PromptSession()
     while failed_surahs:
-        retry = await session.prompt_async(f"The following surahs have failed to download.\n[{', '.join(str(s) for s in failed_surahs)}]\n Do you want to retry? (yes/no): ", completer=None)
-        if retry.lower() not in ['yes', 'y']:
+        retry = await session.prompt_async(
+            f"The following surahs have failed to download.\n[{', '.join(str(s) for s in failed_surahs)}]\n Do you want to retry? (yes/no): "
+        )
+        if retry.lower() not in ["yes", "y"]:
             print_warning("Exiting download of failed surahs.")
             break
         print_info("Retrying failed surahs...")
@@ -206,31 +222,33 @@ async def download_all_surahs():
 
     print_success("Download Complete!")
 
+
 async def download_surahs(surahs, reciter_id):
     loadingBar = LoadingBar("Downloading surahs", total=len(surahs))
     loadingBar.start()
 
     failed_surahs = []
-    
-    # Limit concurrent downloads to prevent overwhelming the server
-    semaphore = asyncio.Semaphore(5)  # Only 5 downloads at once
-    
+
+    semaphore = asyncio.Semaphore(5)
+
     async def download_with_semaphore(surah):
         async with semaphore:
             success = False
-            
+
             def onSuccess():
                 nonlocal success
                 success = True
                 loadingBar.update()
-            
+
             def onFail(failed_surah):
                 nonlocal success
                 success = False
                 loadingBar.update()
                 failed_surahs.append(failed_surah)
-            
-            await download_surah(str(surah), reciter_id, onSuccess=onSuccess, onFail=onFail)
+
+            await download_surah(
+                str(surah), reciter_id, onSuccess=onSuccess, onFail=onFail
+            )
 
     try:
         tasks = []
@@ -244,7 +262,8 @@ async def download_surahs(surahs, reciter_id):
     except Exception as e:
         loadingBar.stop()
         print_error(f"Download batch failed: {e}")
-        return surahs  # Return all as failed
+        return surahs
+
 
 def list_reciters():
     print_subtitle("Reciters List:")
@@ -252,80 +271,89 @@ def list_reciters():
     for i, reciter in enumerate(reciters, start=1):
         print_info(f"{i}. {reciter}")
 
+
 async def download_surah(surah, reciter_id, onSuccess=None, onFail=None, max_retries=3):
     for attempt in range(max_retries):
         try:
-            reciter_name = QuranAudioAPI.get_reciter(int(reciter_id))['name']
+            reciter_name = QuranAudioAPI.get_reciter(int(reciter_id))["name"]
             surah_name = suras_number_to_name[str(surah)]
-            filepath = os.path.join(download_location, reciter_name, f"{surah_name}.mp3")
+            filepath = os.path.join(
+                download_location, reciter_name, f"{surah_name}.mp3"
+            )
             os.makedirs(os.path.dirname(filepath), exist_ok=True)
-            
+
             audio_link = await QuranAudioAPI.get_surah_audio(int(surah), reciter_id)
 
-            # Configure connection with better timeouts
             timeout = aiohttp.ClientTimeout(total=300, connect=30, sock_read=30)
             connector = aiohttp.TCPConnector(
-                limit=10,  # Limit concurrent connections
-                limit_per_host=5,  # Limit per host
-                ttl_dns_cache=300,
-                use_dns_cache=True
+                limit=10, limit_per_host=5, ttl_dns_cache=300, use_dns_cache=True
             )
 
-            async with aiohttp.ClientSession(timeout=timeout, connector=connector) as httpSession:
+            async with aiohttp.ClientSession(
+                timeout=timeout, connector=connector
+            ) as httpSession:
                 async with httpSession.get(audio_link) as response:
                     if response.status == 200:
                         await write_surah_to_file(filepath, response)
                         set_metadata(filepath, surah, surah_name, reciter_name)
                         if onSuccess:
                             onSuccess()
-                        return  # Success, exit retry loop
+                        return
                     else:
-                        if attempt == max_retries - 1:  # Last attempt
+                        if attempt == max_retries - 1:
                             if onFail:
                                 onFail(surah)
                         else:
-                            print_warning(f"Attempt {attempt + 1} failed for surah {surah}, retrying...")
-                            await asyncio.sleep(2 ** attempt)  # Exponential backoff
+                            print_warning(
+                                f"Attempt {attempt + 1} failed for surah {surah}, retrying..."
+                            )
+                            await asyncio.sleep(2**attempt)
 
         except (aiohttp.ClientConnectionError, asyncio.TimeoutError, ssl.SSLError) as e:
-            if attempt == max_retries - 1:  # Last attempt
-                print_error(f"Failed to download surah {surah} after {max_retries} attempts: {e}")
+            if attempt == max_retries - 1:
+                print_error(
+                    f"Failed to download surah {surah} after {max_retries} attempts: {e}"
+                )
                 if onFail:
                     onFail(surah)
             else:
-                print_warning(f"Attempt {attempt + 1} failed for surah {surah}: {e}, retrying...")
-                await asyncio.sleep(2 ** attempt)  # Exponential backoff
+                print_warning(
+                    f"Attempt {attempt + 1} failed for surah {surah}: {e}, retrying..."
+                )
+                await asyncio.sleep(2**attempt)
         except Exception as e:
             print_error(f"Unexpected error downloading surah {surah}: {e}")
             if onFail:
                 onFail(surah)
             break
 
+
 async def write_surah_to_file(filepath, response):
-    with open(filepath, 'wb') as file:
+    with open(filepath, "wb") as file:
         async for chunk in response.content.iter_chunked(1024):
             file.write(chunk)
 
+
 def set_metadata(filepath, surah_number, surah_name, reciter_name):
     audio = MP3(filepath, ID3=ID3)
-        
-    # Add ID3 tag if it doesn't exist
+
     if audio.tags is None:
         audio.add_tags()
-    
-    # Set metadata
-    audio.tags.add(TIT2(encoding=3, text=surah_name))  # Title
-    audio.tags.add(TPE1(encoding=3, text=reciter_name))  # Artist
-    audio.tags.add(TALB(encoding=3, text=reciter_name))  # Album
-    audio.tags.add(TCON(encoding=3, text="Quran"))  # Genre
-    audio.tags.add(TRCK(encoding=3, text=f"{surah_number}/114"))  # Track number (current/total)
-    
-    # Save the changes
+
+    audio.tags.add(TIT2(encoding=3, text=surah_name))
+    audio.tags.add(TPE1(encoding=3, text=reciter_name))
+    audio.tags.add(TALB(encoding=3, text=reciter_name))
+    audio.tags.add(TCON(encoding=3, text="Quran"))
+    audio.tags.add(TRCK(encoding=3, text=f"{surah_number}/114"))
+
     audio.save()
+
 
 async def set_download_location():
     completer = PathCompleter(only_directories=True, expanduser=True)
-    new_location = await session.prompt_async("Enter the new download location: ", completer=completer)
+
+    session = PromptSession(completer=completer)
+    new_location = await session.prompt_async("Enter the new download location: ")
     new_location = os.path.expanduser(new_location.strip())
     if not new_location:
         print_error("Invalid path. Please try again.")
@@ -337,10 +365,12 @@ async def set_download_location():
     download_location = new_location
     print_debug(f"Download location set to: {download_location}")
 
+
 def exit_app():
     print_warning("\nExiting the application...")
     print_debug("As-Salam Alaikom Wa Rahmatullahi Wa Barakatu!")
     sys.exit()
+
 
 def show_menu():
     print_subtitle("\nMenu:")
@@ -351,8 +381,9 @@ def show_menu():
     print_info("5 - Show current download path")
     print_info("6 - Exit")
 
+
 async def main():
-    if platform.system() == 'Windows':
+    if platform.system() == "Windows":
         asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
     await QuranAudioAPI.initialize()
@@ -360,22 +391,25 @@ async def main():
     print_title("-- Quran Audio Downloader --")
     while True:
         show_menu()
-        choice = await session.prompt_async("\nChoose an option (1-6): ", completer=None)
 
-        if choice == '1':
+        session = PromptSession()
+        choice = await session.prompt_async("\nChoose an option (1-6): ")
+
+        if choice == "1":
             await download_one_surah()
-        elif choice == '2':
+        elif choice == "2":
             await download_all_surahs()
-        elif choice == '3':
+        elif choice == "3":
             list_reciters()
-        elif choice == '4':
+        elif choice == "4":
             await set_download_location()
-        elif choice == '5':
+        elif choice == "5":
             print_debug(f"Current download path: {download_location}")
-        elif choice == '6':
+        elif choice == "6":
             exit_app()
         else:
             print_error("Invalid choice, please try again.")
+
 
 if __name__ == "__main__":
     asyncio.run(main())

@@ -2,6 +2,7 @@ import requests
 from typing import List, Dict, Set, Optional
 import enum
 
+
 class QuranAudioAPI:
     DEFAULT_RECITER_ID = 118
     _all_reciters: List[Dict] = []
@@ -10,9 +11,14 @@ class QuranAudioAPI:
     @staticmethod
     async def initialize() -> None:
         # Fetch reciters from the API
-        response = requests.get("https://mp3quran.net/api/v3/reciters", params={"language": "eng"})
-        QuranAudioAPI._all_reciters = response.json()['reciters']
-        QuranAudioAPI._reciters_name_to_id = {reciter['name']: int(reciter['id']) for reciter in QuranAudioAPI._all_reciters}
+        response = requests.get(
+            "https://mp3quran.net/api/v3/reciters", params={"language": "eng"}
+        )
+        QuranAudioAPI._all_reciters = response.json()["reciters"]
+        QuranAudioAPI._reciters_name_to_id = {
+            reciter["name"]: int(reciter["id"])
+            for reciter in QuranAudioAPI._all_reciters
+        }
 
     @staticmethod
     def get_sorted_names() -> List[str]:
@@ -28,32 +34,45 @@ class QuranAudioAPI:
 
     @staticmethod
     def get_reciter(id: int) -> Optional[Dict]:
-        return next((reciter for reciter in QuranAudioAPI._all_reciters if reciter['id'] == id), None)
+        return next(
+            (reciter for reciter in QuranAudioAPI._all_reciters if reciter["id"] == id),
+            None,
+        )
 
     @staticmethod
-    async def get_surah_audio(surah: int, reciter_id: int, moshaf_type: 'MoshafType' = 'MoshafType.REWAYAT_HAFS_A_N_ASSEM_MURATTAL', allow_other_moshaf: bool = True) -> str:
+    async def get_surah_audio(
+        surah: int,
+        reciter_id: int,
+        moshaf_type: "MoshafType" = "MoshafType.REWAYAT_HAFS_A_N_ASSEM_MURATTAL",
+        allow_other_moshaf: bool = True,
+    ) -> str:
         # Fetch reciter by id
-        response = requests.get("https://mp3quran.net/api/v3/reciters", params={"language": "eng", "reciter": reciter_id})
-        reciter = response.json()['reciters'][0]
+        response = requests.get(
+            "https://mp3quran.net/api/v3/reciters",
+            params={"language": "eng", "reciter": reciter_id},
+        )
+        reciter = response.json()["reciters"][0]
 
         link = ""
         # Search through the moshafs for the correct one
-        for moshaf in reciter['moshaf'][::-1]:
-            if moshaf['moshaf_type'] == moshaf_type:
-                if surah in map(int, moshaf['surah_list'].split(',')):
+        for moshaf in reciter["moshaf"][::-1]:
+            if moshaf["moshaf_type"] == moshaf_type:
+                if surah in map(int, moshaf["surah_list"].split(",")):
                     link = f"{moshaf['server']}{str(surah).zfill(3)}.mp3"
                 break
 
         if not link and allow_other_moshaf:
-            for moshaf in reciter['moshaf'][::-1]:
-                if surah in map(int, moshaf['surah_list'].split(',')):
+            for moshaf in reciter["moshaf"][::-1]:
+                if surah in map(int, moshaf["surah_list"].split(",")):
                     link = f"{moshaf['server']}{str(surah).zfill(3)}.mp3"
                     break
 
         if link:
             return link
         else:
-            raise Exception(f"No audio found for surah {surah} and reciter {reciter_id}")
+            raise Exception(
+                f"No audio found for surah {surah} and reciter {reciter_id}"
+            )
 
 
 class MoshafType(enum.Enum):
